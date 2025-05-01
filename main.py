@@ -1,7 +1,6 @@
 #############
 #Section 1 - Import Modules and Global Variables
-
-import mysql.connector
+import sqlite3
 #############
 
 #############
@@ -11,104 +10,234 @@ import mysql.connector
 
 #############
 #Section 3 - Functions Definition
-def greeting():
-    def get_user_name():
-        return input("Please enter your name: ")
-    print("Welcome to Elite Banking System!")
-    name = get_user_name()
-    print(f"Hello, {name}!")
 
+#database name
+DB_NAME = "bank.db"
+
+def initialize_database():
+    connection = sqlite3.connect(DB_NAME)
+    print("Connected to the database.")
+    cursor = connection.cursor()
+    print("Cursor created.")
+    # Create a users table
+    print("Creating users table if it does not exist...")
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users
+            (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+             username TEXT UNIQUE, 
+             password TEXT, 
+             balance REAL DEFAULT 0.0)
+    ''')
+
+    # Save changes and close the connection
+    connection.commit()
+    print("Database changes committed.")
+    connection.close()
+    print("Database connection closed.\n")
+
+
+#Handle user registration
+def register_user():
+    #Database connection
+    connection = sqlite3.connect(DB_NAME)
+    cursor = connection.cursor()
+
+    #Ask for login info
+    print("\n--- User Registration ---")
+    username = input("Enter a username: ")
+    password = input("Enter a password: ")
+
+    #Insert new user into database
+    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+    connection.commit()
+    print("✅ Account successfully created!")
+
+    #closing connection
+    connection.close()
+
+
+#User login function
+def login_user():
+    #Database connection
+    connection = sqlite3.connect(DB_NAME)
+    cursor = connection.cursor()
+
+    #Ask for login info
+    print("\n--- User Login ---")
+    username = input("Username: ")
+    password = input("Password: ")
+
+    #Does user exist?
+    cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
+    user = cursor.fetchone()
+    connection.close()
+
+    #User data if successful login
+    if user:
+        print(f"✅ Login successful. Welcome, {username}!")
+        return user
+    else:
+        print("❌ Login failed. Please check your credentials.")
+        return None
+
+#Display menu after login
 def display_menu():
-    print("\n **Please choose from the following options:**")
-    print("1. Check Balance")
-    print("2. Deposit Balance")
-    print("3. Withdraw Funds")
-    print("4. Create New Account")
-    print("5. Modify Account")
-    print("6. Exit")
+    print("\n --- Main Menu ---")
+    print("1️⃣  Check Balance")
+    print("2️⃣  Deposit Funds")
+    print("3️⃣  Withdraw Funds")
+    print("4️⃣  Modify Account")
+    print("5️⃣  Close Account")
+    print("6️⃣  Logout")
 
-def user_selection():
-    # Program starts with in_use = True, indicating the program is running
-    in_use = True
-    while in_use:
-        try:
-            user_input = int(input("Enter a number between 1-5: "))
-            if user_input == 1:
-                =
-            elif user_input == 2:
-                
-            elif user_input == 3:
-                login_user()
-            elif user_input == 4:
-                register_user()
-            elif user_input == 5:
-                print("Goodbye! Thank you for your time!")
-                # Exiting the program
-                in_use = False
-            else:
-                print("\nSorry, not a valid choice. Please try again.")
-        except ValueError:
-            print("Invalid input! Please enter a valid number.")
+#Check user balance
+def check_balance(user_id):
+    connection = sqlite3.connect(DB_NAME)
+    cursor = connection.cursor()
+    cursor.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+    balance = cursor.fetchone()[0]
+    #shows 2 decimal places
+    print(f"💰 Your current balance is: ${balance:.2f}")
+    connection.close()
 
+def deposit(user_id):
+    #ask how much to deposit
+    amount = float(input("Enter deposit amount:"))
 
-# Function to establish a database connection
-def create_connection():
-    try:
-        # Attempt to establish a connection to the database using the specified credentials.
-        connection = mysql.connector.connect(
-            host="your_host",  # Replace with your database host (e.g., "localhost" or an IP address).
-            user="your_user",  # Replace with your username for the database.
-            password="your_password",  # Replace with your password for the database.
-            database="your_database"  # Replace with the name of the database you're connecting to.
-        )
-        return connection  # Return the connection object if successful.
-    except mysql.connector.Error as error:
-        # Handle MySQL-specific errors. 'error' is a variable holding the details of the database error.
-        print(f"Error connecting to MySQL: {error}")
-        return None  # Return None if the connection fails.
+    #Update balance
+    connection = sqlite3.connect(DB_NAME)
+    cursor = connection.cursor()
+    cursor.execute("UPDATE users SET balance = balance + ? WHERE id = ?", (amount, user_id))
+    connection.commit()
+    print(f"✅ ${amount:.2f} deposited successfully.")
+    connection.close()
 
-# Function to retrieve the balance of a specific account
-def view_balance():
-    try:
-        # Step 1: Prompt the user to enter their account ID.
-        account_id = input("Please enter your account ID: ")
+#Withdraw funds
+def withdraw(user_id):
+    #ask how much to withdraw
+    amount = float(input("Enter withdrawal amount: "))
 
-        # Step 2: Establish a connection to the database.
-        connection = create_connection()
-        if connection:
-            # Step 3: Create a cursor object to interact with the database.
-            cursor = connection.cursor()
+    #get current balance
+    connection = sqlite3.connect(DB_NAME)
+    cursor = connection.cursor()
+    cursor.execute("SELECT balance FROM users WHERE id = ?", (user_id,))
+    current_balance = cursor.fetchone()[0]
 
-            # Step 4: Define the SQL query to fetch the balance for the given account ID.
-            query = "SELECT balance FROM accounts WHERE account_id = %s"
-            
-            # Step 5: Execute the SQL query, replacing the placeholder (%s) with the provided account ID.
-            cursor.execute(query, (account_id,))
+    #check if theres enough before withdrawing
+    if amount > current_balance:
+        print("❌ Insufficient funds.")
+    else:
+        cursor.execute("UPDATE users SET balance = balance - ? WHERE id = ?", (amount, user_id))
+        connection.commit()
+        print(f"✅ ${amount:.2f} withdrawn successfully.")
+    connection.close()
 
-            # Step 6: Retrieve the query result (the balance for the account).
-            result = cursor.fetchone()
+#modify account
+def modify_account(user_id):
+    # database connection
+    connection = sqlite3.connect(DB_NAME)
+    cursor = connection.cursor()
 
-            # Step 7: Close the connection to the database once the operation is complete.
-            connection.close()
+    #ask user what to change
+    print("\n--- Modify Account ---")
+    print("1. Change Username")
+    print("2. Change Password")
+    choice = input("Select an option to modify: ")
 
-            # Step 8: Return or display the balance if the account exists; otherwise, show an error message.
-            if result:
-                # Format the balance to display as a currency with 2 decimal places.
-                # `${result[0]:.2f}` ensures that the balance is shown as a float rounded to 2 decimals (e.g., $123.45).
-                print(f"Your account balance is: ${result[0]:.2f}")
-            else:
-                print("Account not found.")
-    except Exception as e:
-        # Handle any unexpected errors and print an error message.
-        # 'Exception' is a general error class, and 'e' is a variable holding the error details.
-        print(f"An unexpected error occurred: {e}")
+    if choice == '1':
+        # Modify the username
+        new_username = input("Enter the new username: ")
+        cursor.execute("UPDATE users SET username = ? WHERE id = ?", (new_username, user_id))
+        print(f"✅ Username updated to {new_username}.")
+    elif choice == '2':
+        # Modify the password
+        new_password = input("Enter the new password: ")
+        cursor.execute("UPDATE users SET password = ? WHERE id = ?", (new_password, user_id))
+        print("✅ Password updated.")
+    else: 
+        print("❌ Invalid option. No changes made.")
 
+    # Commit changes and close connection
+    connection.commit()
+    connection.close()
 
+#account closure function
+def close_account(user_id):
+    # Database connection
+    connection = sqlite3.connect(DB_NAME)
+    cursor = connection.cursor()
+
+    # Ask the user to confirm 
+    confirmation = input("Are you sure you want to close your account? This action is permanent (y/n): ")
+
+    if confirmation.lower() == 'y':
+        # Delete account from database
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        print("❌ Account deleted permanently.")
+    else:
+        print("🚫 Account closure canceled.")
+
+    # Commit changes and close connection
+    connection.commit()
+    connection.close()
+
+#menu after logging in
+def user_selection(user):
+    while True:
+        #show menu
+        display_menu()
+        choice = input("Select an option (1-6): ")
+        
+        if choice == '1':
+            check_balance(user[0])
+        elif choice == '2':
+            deposit(user[0])
+        elif choice == '3':
+            withdraw(user[0])
+        elif choice == '4':
+            modify_account(user[0])
+        elif choice == '5':
+            close_account(user[0])
+            break  # Exit the session after account closure
+        elif choice == '6':
+            print("👋 Logging out...")
+            break
+        else:
+            print("\n❌ Invalid choice. Please try again.")
+
+#Main program
+def main():
+    #intialize database w/ table
+    initialize_database()
+    print("🏦 Welcome to Elite Banking System!")
+
+    #show login menu
+    while True:
+        print("\n--- Start Menu --- ")
+        print("1. Login")
+        print("2. Register")
+        print("3. Exit")
+
+        # Ask the user what they want to do
+        choice = input("Choose an option: ")
+
+        # If login, go to session
+        if choice == '1':
+            user = login_user()
+            if user:
+                user_selection(user)
+        # If register, go to registration
+        elif choice == '2':
+            register_user()
+        # Exit program
+        elif choice == '3':
+            print("👋 Exiting program. Goodbye!")
+            break
+        else:
+            print("❌ Invalid input. Please try again.")
 #############
 
 #############
 #Section 4 - Running Section
-greeting()
-display_menu()
-user_selection()
+main()
 #############
